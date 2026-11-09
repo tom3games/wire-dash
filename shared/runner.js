@@ -162,6 +162,23 @@ function anchorBoxes(world) {
   return world._anchorBoxes
 }
 
+// ワイヤーが掛からない障害物（world.noHook。向きなしの箱 {x0,y0,z0,x1,y1,z1}）に線が当たる距離。無ければ Infinity
+// 2026-11-09 本人「障害物にはワイヤーは掛からないように」: 障害物の向こうのビルにも、障害物越しには掛けさせない
+export function blockT(world, ox, oy, oz, dx, dy, dz, len) {
+  const L = world.noHook; if (!L || !L.length) return Infinity
+  let best = Infinity
+  for (const b of L) {
+    let t0 = 0, t1 = len, ok = true
+    for (const [p, d, lo, hi] of [[ox, dx, b.x0, b.x1], [oy, dy, b.y0, b.y1], [oz, dz, b.z0, b.z1]]) {
+      if (Math.abs(d) < 1e-9) { if (p < lo || p > hi) { ok = false; break } continue }
+      let a = (lo - p) / d, c = (hi - p) / d; if (a > c) { const q = a; a = c; c = q }
+      if (a > t0) t0 = a; if (c < t1) t1 = c; if (t0 > t1) { ok = false; break }
+    }
+    if (ok && t0 < best) best = t0
+  }
+  return best
+}
+const inNoHook = (world, x, y, z) => !!world.noHook && world.noHook.some(b => x > b.x0 && x < b.x1 && y > b.y0 && y < b.y1 && z > b.z0 && z < b.z1)
 // 画面をタッチ・クリックした向きの線が最初に当たる建物の点（ワイヤーの狙い）。当たらなければ null
 // minT: 画面のタップはカメラから線を出す。自分より手前（カメラと自分の間）の電柱に吸われないように、この距離より近い電柱は見ない
 export function rayHit(world, ox, oy, oz, dx, dy, dz, len = 400, minT = 0) {
@@ -171,8 +188,10 @@ export function rayHit(world, ox, oy, oz, dx, dy, dz, len = 400, minT = 0) {
     if (t > 0 && (best < 0 || t < best)) best = t
   }
   let hit = best < 0 ? null : { x: ox + dx * best, y: oy + dy * best, z: oz + dz * best }
+  const bt = blockT(world, ox, oy, oz, dx, dy, dz, len)
   // 電柱・街灯（world.poles、空中出前だけ）: 細いので、線の近く（2.5m 以内）を通れば掛かる。建物より手前なら電柱を優先
   if (world.poles) for (const q of world.poles) {
+    if (inNoHook(world, q.x, q.y1 - 0.4, q.z)) continue   // 障害物にめり込んだ柱の頭には掛けない
     const tx = q.x - ox, tz = q.z - oz, ty = q.y1 - 0.4 - oy
     const t = tx * dx + ty * dy + tz * dz
     if (t <= minT || t > len || (best > 0 && t > best)) continue
@@ -180,6 +199,8 @@ export function rayHit(world, ox, oy, oz, dx, dy, dz, len = 400, minT = 0) {
     // 自動販売機（low）は線の近く 1.5m・機械の高さのあたりだけ（すぐ上の壁を狙ったタップを奪わない）
     if (ex * ex + ez * ez < (q.low ? 2.25 : 6.25) && ey > -(q.y1 - q.y0) * 0.6 && ey < (q.low ? 1 : 2.5)) { best = t; hit = { x: q.x, y: q.y1 - 0.4, z: q.z, pole: true, low: !!q.low } }
   }
+  // 障害物が手前にあれば掛からない（障害物の点を返して画面に×を出す）
+  if (bt < Infinity && (!hit || bt <= best + 0.05) && bt >= minT) return { x: ox + dx * bt, y: oy + dy * bt, z: oz + dz * bt, noHook: true }
   return hit
 }
 
@@ -220,6 +241,7 @@ export function findAnchor(world, r, dirYaw = null) {
         if (t > 0 && (tHit < 0 || t < tHit)) tHit = t
       }
       if (tHit < 0) continue
+      if (blockT(world, ox, oy, oz, dx, dy, dz, tHit) < tHit) continue   // 障害物越しには掛けない
       const ay = oy + dy * tHit
       const horiz = tHit * Math.cos(p)
       if (ay < oy + RUN.wireMinUp || horiz < 5) continue
@@ -233,11 +255,13 @@ export function findAnchor(world, r, dirYaw = null) {
     const base = Math.atan2(hx, hz)
     for (const q of world.poles) {
       const ax = q.x - ox, az = q.z - oz, horiz = Math.hypot(ax, az), ay = q.y1 - 0.4
+      if (inNoHook(world, q.x, ay, q.z)) continue
       if (horiz < 5 || horiz > RUN.wireRange || ay < oy + RUN.wireMinUp) continue
       let yo = (Math.atan2(ax, az) - base) * 180 / Math.PI; while (yo > 180) yo -= 360; while (yo < -180) yo += 360
       if (Math.abs(yo) > 84) continue
       const len = Math.hypot(horiz, ay - oy), pd = Math.atan2(ay - oy, horiz) * 180 / Math.PI
       if (len > RUN.wireRange) continue
+      if (blockT(world, ox, oy, oz, ax / len, (ay - oy) / len, az / len, len) < len) continue
       const s = -Math.abs(yo) * 0.012 - Math.abs(pd - 56) * 0.04 - Math.abs(len - 28) * 0.05 + 0.15 - (ay < RUN.lowAnchor && q.town ? RUN.lowPenalty : 0)
       if (s > bs) { bs = s; best = { x: q.x, y: ay, z: q.z, len, pole: true } }
     }
@@ -409,6 +433,8 @@ export function stepRunner(r, inp, dt, world) {
       let a = null
       const w = inp.wireAt
       let far = false
+      if (w && w.noHook) { ev.push({ t: 'wireMiss', far: true, noHook: true, x: w.x, y: w.y, z: w.z }); a = undefined }
+      else {
       if (w) {
         const d = Math.hypot(w.x - r.x, w.y - (r.y + 1.5), w.z - r.z)
         if (d <= RUN.wireRange && w.y > r.y + 2) a = { x: w.x, y: w.y, z: w.z, len: d }
@@ -416,6 +442,7 @@ export function stepRunner(r, inp, dt, world) {
       }
       if (!a && !far) a = findAnchor(world, r, inp.wireYaw)   // 狙いが無い時は画面の前かスティックの向き
       if (!a && far) { ev.push({ t: 'wireMiss', far: true, x: w.x, y: w.y, z: w.z }); a = undefined }
+      }
       if (a) {
         const d = Math.hypot(a.x - r.x, a.y - (r.y + 1.2), a.z - r.z)
         // 長さは「振り子の一番下が、足元の地面から swingLow 上に来る」長さ。今の距離より長ければ、張るまで落ちてから振れる

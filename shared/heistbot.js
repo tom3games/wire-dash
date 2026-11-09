@@ -80,7 +80,7 @@ function simulate(H, world, r0, act, cfg, dt, b) {
     }
     if (C && passAt < 0) {
       const s0 = (prevX - C.x) * C.nx + (prevZ - C.z) * C.nz, s1 = (r.x - C.x) * C.nx + (r.z - C.z) * C.nz
-      if ((s0 < 0) !== (s1 < 0)) { const k = s0 / (s0 - s1 || 1), ix = prevX + (r.x - prevX) * k, iy = prevY + 1.1 + (r.y - prevY) * k, iz = prevZ + (r.z - prevZ) * k; if (Math.hypot(ix - C.x, iy - C.y, iz - C.z) < HZ.ringPass - 0.8) passAt = i }
+      if ((s0 < 0) !== (s1 < 0)) { const k = s0 / (s0 - s1 || 1), ix = prevX + (r.x - prevX) * k, iy = prevY + 1.1 + (r.y - prevY) * k, iz = prevZ + (r.z - prevZ) * k; if (Math.hypot(ix - C.x, iy - C.y, iz - C.z) < (C.r || HZ.ringR) + 0.8) passAt = i }
     } else if (!C && H.goal && passAt < 0 && Math.hypot(r.x - H.goal.x, r.y + 1 - H.goal.y, r.z - H.goal.z) < HZ.goalR - 1) passAt = i
     prevX = r.x; prevY = r.y; prevZ = r.z
     if (hitAt >= 0) break

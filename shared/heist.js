@@ -9,6 +9,7 @@
 
 import { floorAt, blocked } from './runner.js?v=1'
 import { buildPoles } from './street.js?v=1'
+import { fillLane, makeMonorail, boxDist } from './obstacles.js?v=1'
 
 export const BASE = { x: 30, y: 0, z: 842, r: 7 }   // 町（town.js）と電柱（street.js）の中心。開始は広場の西
 export const SHOP = BASE
@@ -36,15 +37,27 @@ export const multOf = n => MULT.find(([k]) => n >= k)[1]
 // スコア（倍率を掛ける前）。技と紙一重の見せ方の点。タイムとは別
 export const PTS = { ring: 50, near: 20, tight: 40, nice: 10, niceQ: 12, rehook: 4, turn: 12, kick: 20, dive: 10, crash: 30, shake: 12, goal: 100 }
 export const RANKS = [2200, 1500, 900, 400]   // （使っていない。メダルは MEDAL）
-// コース（だんだん技が要る）。rings は輪の番号（0 広場の回転レーザー・1 工事現場の鉄球・2 ビルの谷の上下レーザー・3 運河の高圧線・4 南の通りの回転レーザーとドローン）
+// コース（2026-11-09 v2: 本人「街中のごちゃごちゃした所を避けながらスイング」。高いビルが並ぶ都心の谷間で、障害物の種類でコースを変える）
+// 都心のビル（40〜120m）は x -260〜260・z 560〜1080。通りは x=0（幅28）・x=130・z=690（幅18）。w は通りの中心から壁まで
+const LX0 = { axis: 'z', c: 0, w: 18 }, LZ690 = { axis: 'x', c: 690, w: 13 }, LX130 = { axis: 'z', c: 130, w: 13 }
+const S = Math.PI
 export const COURSES = [
-  { id: 1, rings: [0, 1], goal: false, start: SPAWN, limit: 120 },
-  { id: 2, rings: [2, 3], goal: false, start: { x: 305, y: 0, z: 712, yaw: -Math.PI / 2 }, limit: 120 },
-  { id: 3, rings: [4], goal: true, start: null, limit: 120 },
-  { id: 4, rings: [0, 1, 2, 3, 4], goal: true, start: SPAWN, limit: 300 }
+  { id: 1, limit: 120, start: { x: 0, y: 0, z: 1075, yaw: S },
+    rings: [[0, 16, 990, 0, -1], [0, 20, 880, 0, -1], [0, 14, 770, 0, -1], [0, 18, 650, 0, -1, 'rotor']],
+    lanes: [[LX0, 1075, 560, { skybridge: 3, sign: 3, cables: 2, arch: 1, banner: 1 }]], route: [] },
+  { id: 2, limit: 120, start: { x: -140, y: 0, z: 690, yaw: S / 2 },
+    rings: [[-60, 18, 690, 1, 0], [60, 5, 690, 1, 0, null, 4], [180, 20, 690, 1, 0]],
+    lanes: [[LZ690, -140, 255, { banner: 3, cables: 2, sign: 2 }]], monorail: [LZ690, -130, 250, 10], route: [] },
+  { id: 3, limit: 120, start: { x: 130, y: 0, z: 555, yaw: 0 },
+    rings: [[130, 18, 640, 0, 1], [130, 22, 760, 0, 1, 'shutter'], [130, 16, 900, 0, 1, 'drones'], [130, 20, 1020, 0, 1]],
+    lanes: [[LX130, 555, 1075, { arch: 4, crane: 3, skybridge: 2, cables: 1 }]], route: [] },
+  { id: 4, limit: 240, start: { x: 0, y: 0, z: 1075, yaw: S },
+    rings: [[0, 16, 990, 0, -1], [0, 20, 880, 0, -1], [65, 16, 690, 1, 0], [130, 22, 760, 0, 1, 'shutter'], [130, 16, 900, 0, 1, 'drones'], [130, 20, 1020, 0, 1]],
+    lanes: [[LX0, 1075, 700, { skybridge: 3, sign: 3, cables: 2, arch: 1, banner: 1 }], [LZ690, 0, 130, { banner: 2, cables: 2 }], [LX130, 700, 1075, { arch: 4, crane: 3, skybridge: 2, cables: 1 }]],
+    route: [[], [], [{ x: 0, y: 18, z: 712 }], [{ x: 122, y: 18, z: 698 }], [], []] }
 ]
 // メダル: タイム（金・銀の秒。ゴールすれば銅）／ノーミス／紙一重の数。tools/sim.mjs の bot の分布で決める
-export const MEDAL = { 1: { gold: 10, silver: 16, near: 1 }, 2: { gold: 17, silver: 28, near: 2 }, 3: { gold: 20, silver: 32, near: 2 }, 4: { gold: 46, silver: 65, near: 4 } }
+export const MEDAL = { 1: { gold: 16, silver: 26, near: 2 }, 2: { gold: 22, silver: 36, near: 3 }, 3: { gold: 17, silver: 28, near: 2 }, 4: { gold: 32, silver: 48, near: 4 } }
 export function medalOf(course, s) {
   const M = MEDAL[course]
   if (s.end !== 'clear') return { time: null, nomiss: false, near: false, n: 0 }
@@ -88,13 +101,16 @@ const NETS = [
 const SITE_N = (() => { const l = Math.hypot(1, -0.3); return { x: 1 / l, z: -0.3 / l } })()
 export const GOAL = { x: 196, y: 18, z: 236 }
 export const PYLON_X = [22, 46, 88, 112, 152, 176], PYLON_Z = [538, 491], PYLON_H = 28   // 輪（x=64・x=130）の前に鉄塔が立たないように
-export const LINE_H = [5.5, 11.5, 17.5, 23.5]
+export const LINE_H = [5, 14.5, 23]   // 2026-11-09 4段から3段に（輪 y=10 が線の高さと重なって抜けにくかった。すき間は約9m）
 // 防犯カメラの柱（高さ20m）。運河の両岸と、南の通り・公園のまわりの開けた所に立てる（掛け点が少ない所。tools/reach.mjs で測って足した）
 export const CAM_POLES = (() => {
   const out = [], row = (z, x0, x1, step) => { for (let x = x0; x <= x1 + 0.1; x += step) out.push({ x, z, h: 20 }) }
   row(462, -40, 230, 27); row(546, -40, 230, 30); row(313, 10, 250, 30); row(182, 140, 250, 28)
   return out
 })()
+// 運河の輪の真上に渡したゲート（鉄骨の梁）。2026-11-09 本人「川の間の輪っかが難しい」: 川の上は掛ける物が遠く（輪の中から最寄り29m・72方向中45が掛からない）、
+// 振り子の弧が輪に届かなかった。梁に掛けて、その下を振り子でくぐれるようにする（輪の位置は2通りなので両方に渡す）
+export const GANTRY = [64, 130].map(x => ({ x, z: 514, y: 33, hw: 24 }))
 export function craneOf(v) {
   const [x, , z] = COURSE[1].at[v], ux = -SITE_N.z, uz = SITE_N.x
   return { x: x + ux * 15, z: z + uz * 15, h: 46, jx: -ux, jz: -uz, jl: 22 }
@@ -112,10 +128,14 @@ export function addHeistMap(world) {
   // 柱は細いので、電柱と同じ「線の近くを通れば掛かる」扱い（world.poles）にもする。見た目は js/heist3d.js
   const poles = buildPoles(world, BASE)
   for (const q of CAM_POLES) { const gy = world.groundAt(q.x, q.z, 3).h; q.y = gy; addBox(world, { cx: q.x, cz: q.z, yaw: 0, hw: 0.35, hl: 0.35, y0: gy, y1: gy + q.h, kind: 'building', small: true, camPole: true }); poles.push({ x: q.x, z: q.z, y0: gy, y1: gy + q.h, kind: 'pole', prop: true }) }
+  for (const g of GANTRY) {
+    addBox(world, { cx: g.x, cz: g.z, yaw: 0, hw: g.hw, hl: 0.9, y0: g.y - 1.6, y1: g.y, kind: 'building', small: true, gantry: true })
+    for (const s of [-1, 1]) addBox(world, { cx: g.x + s * g.hw, cz: g.z, yaw: 0, hw: 0.9, hl: 0.9, y0: -8, y1: g.y, kind: 'building', small: true, gantry: true })
+  }
   const G = GOAL
   addBox(world, { cx: G.x, cz: G.z, yaw: 0, hw: 5.2, hl: 5.2, y0: G.y + 5, y1: G.y + 15, kind: 'building', small: true, balloon: true })
   world._anchorBoxes = null
-  world.heistMap = { cranes, pylons, goal: G, camPoles: CAM_POLES }
+  world.heistMap = { cranes, pylons, goal: G, camPoles: CAM_POLES, gantry: GANTRY }
   return world.heistMap
 }
 
@@ -124,40 +144,33 @@ export function createHeist(world, seed = 1, opt = {}) {
   const course = COURSES.find(c => c.id === (opt.course || 1)) || COURSES[0]
   const H = {
     world, seed, key: 0, rnd, t: 0, over: false, end: null, endT: 0, course: course.id, limit: course.limit,
-    cp: 0, cps: [], all: [], goal: course.goal ? { ...GOAL } : null, haz: [], drones: [], nextId: 1, events: [],
+    cp: 0, cps: [], all: [], goal: null, haz: [], drones: [], nextId: 1, events: [],
     misses: 0, penalty: 0, inv: 0, chain: 0, mult: 1, chainT: 0, groundT: 0,
     light: { x: 0, z: 0, hx: 0, hy: -999, hz: 0, ang: 0, meter: 0, cd: 1e9, on: false, saw: false },
     stats: { score: 0, rings: 0, near: 0, tight: 0, nice: 0, rehook: 0, turn: 0, kick: 0, dive: 0, crash: 0, shake: 0, hits: 0, hitBy: {}, bestChain: 0, bestMult: 1, ringT: [], time: 0, techs: 0 },
     tut: !!opt.tut, noDrones: !!opt.noDrones, noLight: true
   }
   addHeistMap(world)
-  // 輪の位置（区間ごとに2通り）。仕掛けは街の全部に置く（コースで使う所だけ通る）
-  const pts = COURSE.map(c => { const k = Math.floor(rnd() * c.at.length); const [x, y, z] = c.at[k]; return { ...c, x, y, z, v: k } })
-  for (let i = 0; i < pts.length; i++) {
-    const P = pts[i], prev = i ? pts[i - 1] : SPAWN
-    let nx = P.x - prev.x, nz = P.z - prev.z
-    if (P.name === 'tower' || P.name === 'south') { nx = 0; nz = -1 }        // 南北の通りの中
-    else if (P.name === 'canal') { nx = 0; nz = -1 }
-    else if (P.name === 'plaza') { nx = 1; nz = 0 }
-    else if (P.name === 'site') { nx = SITE_N.x; nz = SITE_N.z }
-    const l = Math.hypot(nx, nz) || 1
-    H.all.push({ i, name: P.name, x: P.x, y: P.y, z: P.z, nx: nx / l, nz: nz / l, guard: P.guard, v: P.v, passed: false })
-  }
-  for (const C of H.all) buildGuard(H, C, rnd)
-  const R = routeOf(H.all)
-  H.cps = course.rings.map(i => H.all[i])
-  H.route = course.rings.map(i => course.id === 3 && i === 4 ? [{ x: H.all[2].x, y: 16, z: 578 }, { x: H.all[3].x, y: 22, z: 548 }, { x: H.all[3].x, y: 16, z: 480 }, ...R[4]] : R[i]).concat(course.goal ? [R[5]] : [])
-  H.start = course.start || { x: H.all[2].x, y: 0, z: 590, yaw: Math.PI }   // コース3: ビルの谷の南の端から、運河の高圧線を越えて南へ
-  // 区間の網
-  NETS.forEach(N => {
-    let c = N.c
-    if (N.follow != null) c = H.all[N.follow].x
-    const span = N.p1 - N.p0, ph = rnd() * span * 2
-    addHaz(H, { kind: 'net', axis: N.axis, c, w: N.w, p0: N.p0, p1: N.p1, top: N.top + (rnd() - 0.5) * 4, v: N.v * (0.9 + rnd() * 0.25), ph, cx: N.axis === 'x' ? (N.p0 + N.p1) / 2 : c, cz: N.axis === 'x' ? c : (N.p0 + N.p1) / 2, cy: N.top / 2, rad: span / 2 + N.w + N.top })
+  // 輪（コースごとに決まった所）と、その輪の仕掛け
+  course.rings.forEach(([x, y, z, nx, nz, guard, r], i) => H.cps.push({ i, name: 'r' + i, x, y, z, nx, nz, guard: guard || null, r: r || HZ.ringR, v: 0, passed: false }))
+  H.all = H.cps
+  for (const C of H.cps) if (C.guard) buildGuard(H, C, rnd)
+  H.route = course.rings.map((_, i) => course.route[i] || [])
+  H.start = course.start
+  // 通りの障害物（輪の前後 14m は空ける）。ワイヤーは掛からない（world.colliders に入れない）
+  course.lanes.forEach(([L0, a, b, mix], k) => {
+    const L = { ...L0, a, b }
+    const skip = H.cps.filter(C => L.axis === 'z' ? Math.abs(C.x - L.c) < 3 : Math.abs(C.z - L.c) < 3).map(C => { const u = L.axis === 'z' ? C.z : C.x; return [u - 14, u + 14] })
+    for (const o of fillLane(L, mix, seed * 31 + k * 7 + course.id, skip)) addHaz(H, o)
   })
-  // 気球のまわりを回る見張りのドローン
-  const G = GOAL
-  for (let k = 0; k < 2; k++) addDrone(H, { x: G.x + (k ? 14 : -14), y: G.y + 4, z: G.z, mode: 'patrol', home: { x: G.x, y: G.y + 3, z: G.z, r: 15, a: k * Math.PI, w: 0.5 * (k ? 1 : -1) } })
+  if (course.monorail) { const [L0, a, b, y] = course.monorail; addHaz(H, makeMonorail(L0, a, b, y)) }
+  // ワイヤーが掛からない物の一覧（runner.js の rayHit / findAnchor が見る）。障害物の箱と、線を囲む箱
+  world.noHook = []
+  for (const h of H.haz) if (h.kind === 'shape') {
+    for (const b of h.boxes) world.noHook.push({ x0: b.cx - b.hw, x1: b.cx + b.hw, y0: b.cy - b.hh, y1: b.cy + b.hh, z0: b.cz - b.hl, z1: b.cz + b.hl })
+    for (const s of h.segs) { const r = s[6] + 0.3; world.noHook.push({ x0: Math.min(s[0], s[3]) - r, x1: Math.max(s[0], s[3]) + r, y0: Math.min(s[1], s[4]) - r, y1: Math.max(s[1], s[4]) + r, z0: Math.min(s[2], s[5]) - r, z1: Math.max(s[2], s[5]) + r }) }
+  }
+  world._anchorBoxes = null
   return H
 }
 const ev = (H, e) => H.events.push(e)
@@ -182,12 +195,16 @@ function addDrone(H, o) {
 // 輪を守る仕掛け（4種類）
 function buildGuard(H, C, rnd) {
   const ux = -C.nz, uz = C.nx   // 輪の面の横向き（水平）
+  if (C.guard === 'drones') {
+    for (let k = 0; k < 2; k++) addDrone(H, { x: C.x + ux * 12, y: C.y, z: C.z + uz * 12, mode: 'patrol', home: { x: C.x, y: C.y + 1, z: C.z, r: 9 + k * 3, a: k * Math.PI + rnd(), w: 0.6 * (k ? -1 : 1) } })
+    return
+  }
   if (C.guard === 'rotor' || C.guard === 'rotor2') {
     // 回転レーザー: 輪の中心から縁へ伸びる棒が回る（すき間を抜ける）
     const n = C.guard === 'rotor2' ? 3 : pickOf(rnd, [3, 4])
     const w = (C.guard === 'rotor2' ? 1.25 : 0.85) * (0.9 + rnd() * 0.3) * (rnd() < 0.5 ? -1 : 1)
     addHaz(H, { kind: 'rotor', cx: C.x, cy: C.y, cz: C.z, ux, uz, n, L: HZ.ringR + 0.7, hub: 0.5, w, ph: rnd() * 6, r: 0.16, rad: HZ.ringR + 2, cp: C.i })
-    if (C.guard === 'rotor2') for (let k = 0; k < 2; k++) addDrone(H, { x: C.x + ux * 12, y: C.y, z: C.z + uz * 12, mode: 'patrol', home: { x: C.x, y: C.y + 1, z: C.z, r: 11 + k * 3, a: k * Math.PI + rnd(), w: 0.6 * (k ? -1 : 1) } })
+    if (C.guard === 'rotor2' || C.guard === 'drones') for (let k = 0; k < 2; k++) addDrone(H, { x: C.x + ux * 12, y: C.y, z: C.z + uz * 12, mode: 'patrol', home: { x: C.x, y: C.y + 1, z: C.z, r: 11 + k * 3, a: k * Math.PI + rnd(), w: 0.6 * (k ? -1 : 1) } })
   } else if (C.guard === 'balls') {
     // 鉄球: 輪の真上を通るクレーンの腕から2つ（輪の左半分と右半分）。進む向きに前後へ振れ、互い違い（片方が下に来た時、もう片方は前か後ろの端）
     const crane = craneOf(C.v)
@@ -199,7 +216,7 @@ function buildGuard(H, C, rnd) {
     }
   } else if (C.guard === 'shutter') {
     // 上下するレーザーの棒（2本・逆向き）。通りの幅いっぱい
-    const W = Math.abs(C.x) < 1 ? 13 : 8.6, w = 1.15 + rnd() * 0.45, ph = rnd() * 6
+    const W = 9, w = 1.15 + rnd() * 0.45, ph = rnd() * 6
     for (const k of [0, 1]) addHaz(H, { kind: 'shutter', cx: C.x, cy: C.y, cz: C.z, ux, uz, W, A: 7.5, w, ph: ph + k * Math.PI, r: 0.16, rad: W + 8, cp: C.i })
   } else if (C.guard === 'lines') {
     // 高圧線: 運河の両岸に鉄塔が並び、岸に沿って4段の線（すき間は6m）。上を越えて急降下でくぐるか、すき間を抜ける
@@ -274,6 +291,12 @@ export function hazGap(h, t, x, y, z) {
     if (dv > 0) return dh > 0 ? Math.hypot(dh, dv) : dv
     return dh
   }
+  if (h.kind === 'shape') {
+    let g = 1e9
+    for (const b of h.boxes) for (const yy of [y0, (y0 + y1) / 2, y1]) { const d = boxDist(b, x, yy, z) - B; if (d < g) g = d }
+    for (const s of h.segs) { const d = segSeg(x, y0, z, x, y1, z, s[0], s[1], s[2], s[3], s[4], s[5]) - s[6] - B; if (d < g) g = d }
+    return g
+  }
   hazSegs(h, t, _seg)
   let g = 1e9
   for (const s of _seg) { const d = segSeg(x, y0, z, x, y1, z, s[0], s[1], s[2], s[3], s[4], s[5]) - s[6] - B; if (d < g) g = d }
@@ -341,7 +364,7 @@ export function stepHeist(H, r, dt) {
       const k = Math.abs(s1 - s0) > 1e-6 ? s0 / (s0 - s1) : 0
       const ix = px + (r.x - px) * k, iy = py + 1.1 + (r.y - py) * k, iz = pz + (r.z - pz) * k
       const d = Math.hypot(ix - C.x, iy - C.y, iz - C.z)
-      if (d < HZ.ringPass) {
+      if (d < (C.r || HZ.ringR) + 1.6) {
         C.passed = true; H.cp++; H.stats.rings++; H.stats.ringT.push(Math.round(H.t))
         const pts = score(H, PTS.ring, 'ring', { x: C.x, y: C.y, z: C.z }, true)
         ev(H, { t: 'ring', n: H.cp, of: H.cps.length + (H.goal ? 1 : 0), pts, x: C.x, y: C.y, z: C.z, center: d < 2.5 })

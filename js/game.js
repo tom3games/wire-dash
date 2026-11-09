@@ -33,28 +33,28 @@ const man = v => Math.round(v).toLocaleString()
 // ---------------------------------------------------------------- 文言（日英）
 const T = {
   ja: {
-    logo: 'ワイヤーダッシュ', logoSub: '障害物をよけて、輪をくぐれ', pick: 'コースを選ぶ', how: '遊び方', lang: 'EN', more: 'ほかのゲーム', muteOn: '音あり', muteOff: '音なし', loading: 'コースを準備中',
+    logo: 'ワイヤーダッシュ', logoSub: 'ビルの谷間をスイングで抜けろ', pick: 'コースを選ぶ', how: '遊び方', lang: 'EN', more: 'ほかのゲーム', muteOn: '音あり', muteOff: '音なし', loading: 'コースを準備中',
     howTitle: '遊び方', ok: 'わかった',
     howItems: [
       '右下の<b>大ボタン</b>で前のビルにワイヤー、もう一度で離す。左のスティックで向き。ビルをタップするとそこに掛かる',
-      '金の<b>輪</b>を順にくぐってゴールまでの<b>タイム</b>を競う。輪の中の赤い光はすき間を抜ける',
-      '赤く光る物に触れたら<b>ミス</b>（+3秒）。振り子の下を過ぎて<b>振り上がり始め</b>で離すと、遠く速く跳べる',
+      '金の<b>輪</b>を順にくぐってゴールまでの<b>タイム</b>を競う。ビルの間の<b>赤白の障害物</b>にはワイヤーが掛からない。上・下・すき間をくぐる',
+      '赤白の障害物に触れたら<b>ミス</b>（+3秒）。振り子の下を過ぎて<b>振り上がり始め</b>で離すと、遠く速く跳べる',
       '<b>紙一重</b>・離してすぐ次へ<b>急旋回</b>・壁に当たった瞬間に<b>壁蹴り</b>・空中で地面をタップして<b>急降下</b>でスコア。メダルはタイム・ノーミス・紙一重'
     ],
     keysPc: 'PC: WASD・矢印で向き　クリックでワイヤー（空中で地面をクリックで急降下）　E・Space は前へ自動　ドラッグで見回す',
     credit: '音: Kenney, rubberduck, artisticdude, poinl, ezwa, SpliceSound ほか（CC0・Public domain）。詳しくは CREDITS.md',
     courses: [
-      { name: '広場から工事現場', sub: '回転レーザーと鉄球' },
-      { name: 'ビルの谷と運河', sub: '上下するレーザーと高圧線' },
-      { name: '南の空とドローン', sub: '追ってくるドローン' },
-      { name: '全部つなぐ', sub: 'スタートから気球まで' }
+      { name: '大通りを抜ける', sub: '渡り廊下と突き出た看板' },
+      { name: '高架の下をくぐる', sub: 'モノレールと垂れ幕' },
+      { name: '架け橋だらけの谷間', sub: '謎の架け橋とクレーンの腕' },
+      { name: '全部つなぐ', sub: '大通りから谷間まで' }
     ],
     locked: '前のコースをゴールすると開く', best: 'ベスト', noBest: '未走行',
     scoreL: 'スコア', missL: n => `ミス ${n}`, ringL: (n, of) => `輪 ${n}/${of}`, goalL: 'ゴール', chainL: n => `${n}連続`,
-    tooFar: '届かない', kickL: '蹴る', pause: '中断', paused: '一時停止', resume: '続ける', quit: 'やめる', retry: 'やり直す',
+    tooFar: '届かない', noHook: '掛からない', kickL: '蹴る', pause: '中断', paused: '一時停止', resume: '続ける', quit: 'やめる', retry: 'やり直す',
     coach: 'コーチ',
     tips: {
-      start: '金の輪をくぐれ。赤く光る物は触るとミスだ', swing: '振り上がり始めで離せ。遠くへ跳べる', kick: '壁にぶつかった瞬間にボタン。壁を蹴れる',
+      start: '赤白の物にはワイヤーが掛からない。ビルに掛けて、すき間をくぐれ', swing: '振り上がり始めで離せ。遠くへ跳べる', kick: '壁にぶつかった瞬間にボタン。壁を蹴れる',
       drone: 'ドローンはビルの角で振れば、ぶつかる', canal: '高圧線は上を越えて、空中で地面をタップ。急降下だ', ring: '次の輪はあの光の柱だ', ghost: '水色は前のベストの自分だ。抜け'
     },
     pop: { nice: 'ナイスリリース', turn: '急旋回', kick: '壁蹴り', dive: '急降下', crash: 'ドローン激突', shake: '振り切った', near: '紙一重', tight: '極・紙一重', ring: '輪' },
@@ -68,28 +68,28 @@ const T = {
     postText: (c, t, m) => `ワイヤーダッシュ コース${c} ${t}${m ? '（' + m + 'メダル）' : ''}`
   },
   en: {
-    logo: 'WIRE DASH', logoSub: 'Swing through the rings, dodge the red', pick: 'Choose a course', how: 'How to play', lang: 'JP', more: 'More games', muteOn: 'Sound on', muteOff: 'Muted', loading: 'Setting up the course',
+    logo: 'WIRE DASH', logoSub: 'Swing through the city canyon', pick: 'Choose a course', how: 'How to play', lang: 'JP', more: 'More games', muteOn: 'Sound on', muteOff: 'Muted', loading: 'Setting up the course',
     howTitle: 'HOW TO PLAY', ok: 'Got it',
     howItems: [
       'The <b>big button</b> fires a wire at the building ahead; press again to let go. Left stick steers. Tap a building to hook it',
-      'Fly through the gold <b>rings</b> in order and race the <b>clock</b>. Slip through the gaps in the red light inside each ring',
-      'Touching anything red is a <b>miss</b> (+3 s). Let go just as the swing <b>starts to rise</b> to fly farther and faster',
+      'Fly through the gold <b>rings</b> in order and race the <b>clock</b>. The <b>red-and-white obstacles</b> between buildings cannot be hooked. Go over, under or through',
+      'Touching an obstacle is a <b>miss</b> (+3 s). Let go just as the swing <b>starts to rise</b> to fly farther and faster',
       '<b>Close calls</b>, quick <b>re-hook turns</b>, <b>wall kicks</b> and <b>dives</b> (tap the ground mid-air) earn score. Medals: time, no miss, close calls'
     ],
     keysPc: 'PC: WASD / arrows steer · click to wire (click the ground mid-air to dive) · E / Space hooks ahead · drag to look',
     credit: 'Sounds: Kenney, rubberduck, artisticdude, poinl, ezwa, SpliceSound and others (CC0 / public domain). See CREDITS.md',
     courses: [
-      { name: 'Plaza to the site', sub: 'Laser fan and wrecking balls' },
-      { name: 'Tower gap and canal', sub: 'Laser bars and power lines' },
-      { name: 'South sky and drones', sub: 'Drones give chase' },
-      { name: 'The whole run', sub: 'Start to the balloon' }
+      { name: 'Down the avenue', sub: 'Skybridges and jutting signs' },
+      { name: 'Under the monorail', sub: 'Elevated track and banners' },
+      { name: 'Canyon of bridges', sub: 'Odd bridges and crane arms' },
+      { name: 'The whole run', sub: 'Avenue to canyon' }
     ],
     locked: 'Finish the previous course to unlock', best: 'Best', noBest: 'Not run yet',
     scoreL: 'SCORE', missL: n => `Miss ${n}`, ringL: (n, of) => `Ring ${n}/${of}`, goalL: 'Goal', chainL: n => `${n} chain`,
-    tooFar: 'Too far', kickL: 'KICK', pause: 'Pause', paused: 'Paused', resume: 'Resume', quit: 'Quit', retry: 'Restart',
+    tooFar: 'Too far', noHook: 'No hook', kickL: 'KICK', pause: 'Pause', paused: 'Paused', resume: 'Resume', quit: 'Quit', retry: 'Restart',
     coach: 'COACH',
     tips: {
-      start: 'Fly through the gold rings. Touching red is a miss', swing: 'Let go as the swing starts to rise. You fly farther', kick: 'Hit the button the moment you hit a wall. Wall kick',
+      start: 'Red-and-white obstacles cannot be hooked. Hook the buildings and slip through', swing: 'Let go as the swing starts to rise. You fly farther', kick: 'Hit the button the moment you hit a wall. Wall kick',
       drone: 'Swing round a corner and the drones crash', canal: 'Clear the power lines from above, then tap the ground to dive', ring: 'The next ring is under that light', ghost: 'The cyan one is your best run. Beat it'
     },
     pop: { nice: 'NICE RELEASE', turn: 'HARD TURN', kick: 'WALL KICK', dive: 'DIVE', crash: 'DRONE CRASH', shake: 'SHOOK IT', near: 'CLOSE CALL', tight: 'RAZOR CLOSE', ring: 'RING' },
@@ -407,7 +407,7 @@ function onRunnerEvent(e) {
   else if (e.t === 'wireMiss') {
     sfx('wire', { vol: 0.4, rate: 1.3 })
     const tp = me._tap
-    if (e.far && tp && tp.sx != null) { const el = $('miss'); el.style.left = tp.sx + 'px'; el.style.top = tp.sy + 'px'; el.classList.remove('hidden'); el.style.animation = 'none'; void el.offsetWidth; el.style.animation = ''; clearTimeout(el._t); el._t = setTimeout(() => el.classList.add('hidden'), 800) }
+    if (e.far && tp && tp.sx != null) { const el = $('miss'); el.querySelector('small').textContent = e.noHook ? t('noHook') : t('tooFar'); el.style.left = tp.sx + 'px'; el.style.top = tp.sy + 'px'; el.classList.remove('hidden'); el.style.animation = 'none'; void el.offsetWidth; el.style.animation = ''; clearTimeout(el._t); el._t = setTimeout(() => el.classList.add('hidden'), 800) }
   }
   else if (e.t === 'land') { sfx('land', { vol: Math.min(1, 0.3 + e.impact / 20) }); if (e.impact > 14) { sfx('bonk', { vol: 0.5 }); fx.addShake(Math.min(0.6, e.impact / 40)) } }
   else if (e.t === 'bonk') { sfx('bonk', { vol: 0.8 }); fx.addShake(0.4); if (tut) setTimeout(() => hint('kick'), 200) }

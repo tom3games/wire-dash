@@ -18,9 +18,9 @@ for (const [cpu, w, h] of [[1, 390, 844], [4, 390, 844]]) {
   const cdp = await ctx.newCDPSession(p); await cdp.send('Emulation.setCPUThrottlingRate', { rate: cpu })
   const out = { emptyPage: Math.round(base) }
   for (const [name, setup] of [
-    ['canal', "heist.start(4, 3); heist.dbg.safe(); heist.H.cp = 3; heist.dbg.teleport(120, 18, 585); heist.cam.hd = Math.PI; heist.me.grounded = false"],
-    ['tower', "heist.start(4, 4); heist.dbg.safe(); heist.H.cp = 2; const C = heist.H.cps[2]; heist.dbg.teleport(C.x, 20, C.z + 45); heist.cam.hd = Math.PI; heist.me.grounded = false"],
-    ['drones', "heist.start(4, 5); heist.H.inv = 1e9; heist.H.cp = 4; const C = heist.H.cps[4]; heist.dbg.teleport(C.x, 16, C.z + 30); heist.cam.hd = Math.PI; for (let i = 0; i < 6; i++) heist.H.drones.push({ id: 900 + i, x: C.x + i * 3 - 8, y: 18, z: C.z + 40 + i, vx: 0, vy: 0, vz: 0, mode: 'chase', t: 0, life: 99, home: null, v: 12, nm: { min: 1e9, t: -9, hit: false, cd: 0 }, spin: 0, gone: false })"]
+    ['avenue', "heist.start(1, 3); heist.dbg.safe(); heist.dbg.teleport(0, 18, 1040); heist.cam.hd = Math.PI; heist.me.grounded = false"],
+    ['monorail', "heist.start(2, 4); heist.dbg.safe(); heist.dbg.teleport(-120, 16, 690); heist.cam.hd = Math.PI / 2; heist.me.grounded = false"],
+    ['canyon', "heist.start(4, 5); heist.H.inv = 1e9; heist.dbg.teleport(130, 20, 720); heist.cam.hd = 0; heist.me.grounded = false"]
   ]) {
     await p.evaluate(s => { new Function(s)(); window.__keep = setInterval(() => { const m = heist.me; if (m) { m.vx = 0; m.vz = 0; m.vy = 0; m.y = Math.max(m.y, 14); m.grounded = false; m.rope = null } }, 16) }, setup)
     await p.waitForTimeout(800)

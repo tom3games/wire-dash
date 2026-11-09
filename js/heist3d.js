@@ -30,7 +30,7 @@ function rod(b, ax, ay, az, bx, by, bz, t, col) {
 
 export class HeistView {
   constructor(scene, world, low = false) {
-    this.scene = scene; this.low = low
+    this.scene = scene; this.low = low; this.world = world
     this.grp = new THREE.Group(); scene.add(this.grp)
     this.dyn = new THREE.Group(); scene.add(this.dyn)
     // レーザーの棒: 芯（白っぽい）と外の光（赤・加算）。全部の棒を2回の描画で
@@ -98,6 +98,12 @@ export class HeistView {
       for (const hy of LINE_H) obox(b, p.x, hy + 0.3, p.z, 1.6, 0.08, 0.12, 0x5a5e64)
       glow.box(p.x, H + 0.2, p.z, 0.25, 0.25, 0.25, 0xff3020)
     }
+    // 運河のゲート（鉄骨の梁と2本の脚）: 黄色と黒のしま
+    for (const g of M.gantry || []) {
+      for (const s of [-1, 1]) { obox(b, g.x + s * g.hw, (g.y - 8) / 2, g.z, 0.7, (g.y + 8) / 2, 0.7, 0xd8a020); glow.box(g.x + s * g.hw, g.y + 0.4, g.z, 0.3, 0.3, 0.3, 0xff3020) }
+      for (let k = 0; k < 16; k++) { const x0 = g.x - g.hw + k * (g.hw * 2 / 16); obox(b, x0 + g.hw / 16, g.y - 0.8, g.z, g.hw / 16, 0.8, 0.7, k % 2 ? 0x1c1c20 : 0xf2c230) }
+      for (let k = 0; k <= 16; k++) { const x0 = g.x - g.hw + k * (g.hw * 2 / 16); rod(b, x0, g.y - 1.6, g.z - 0.7, x0 + (k % 2 ? 1 : -1) * 1.5, g.y, g.z + 0.7, 0.06, 0x8a8a8a) }
+    }
     // 防犯カメラの柱（掛け点）: 細い柱・腕・カメラと赤い点
     for (const q of M.camPoles || []) {
       const y0 = q.y || 0
@@ -123,7 +129,7 @@ export class HeistView {
     this.lineHalo.userData.keepColor = true; this.grp.add(this.lineHalo)
     // 線を走る火花（点の粒）
     const n = 60, g = new THREE.BufferGeometry(); this.sparkPos = new Float32Array(n * 3); this.sparkLane = []
-    for (let i = 0; i < n; i++) this.sparkLane.push({ z: PYLON_Z[i % 2], h: LINE_H[(i >> 1) % 4], u: Math.random(), v: 0.08 + Math.random() * 0.12 })
+    for (let i = 0; i < n; i++) this.sparkLane.push({ z: PYLON_Z[i % 2], h: LINE_H[(i >> 1) % LINE_H.length], u: Math.random(), v: 0.08 + Math.random() * 0.12 })
     g.setAttribute('position', new THREE.BufferAttribute(this.sparkPos, 3))
     this.sparks = new THREE.Points(g, new THREE.PointsMaterial({ color: 0xffd0a0, size: 0.6, sizeAttenuation: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }))
     this.sparks.frustumCulled = false; this.grp.add(this.sparks)
@@ -160,6 +166,23 @@ export class HeistView {
     this.balloon.position.y = 0   // 前の回で気球ごと上がっていった分を戻す
     const netCore = new THREE.MeshBasicMaterial({ color: 0xff1a2c, fog: false })
     const netSheet = new THREE.MeshBasicMaterial({ color: RED, transparent: true, opacity: 0.14, depthWrite: false, side: THREE.DoubleSide, fog: false })
+    // 通りの障害物（ワイヤーが掛からない物）: 赤と白のしまの鋼材で、ビルの外壁と見分けがつくように。全部で1回の描画
+    const ob = new Builder(), ol = new Builder()
+    const stripe = (b, n) => { const L = Math.max(b.hw, b.hl), along = b.hw >= b.hl ? 'x' : 'z', k = Math.max(1, Math.round(L * 2 / 2.4)); for (let i = 0; i < k; i++) { const f = -L + (i + 0.5) * (2 * L / k), cx = along === 'x' ? b.cx + f : b.cx, cz = along === 'z' ? b.cz + f : b.cz; ob.box(cx, b.cy, cz, along === 'x' ? L / k : b.hw, b.hh, along === 'z' ? L / k : b.hl, (i + n) % 2 ? 0xf4f2ee : 0xe8262e) } }
+    for (const h of H.haz) {
+      if (h.kind !== 'shape') continue
+      h.boxes.forEach((b, i) => {
+        if (b.tag === 'pillar') ob.box(b.cx, b.cy, b.cz, b.hw, b.hh, b.hl, 0x9a9ea6)
+        else if (b.tag === 'banner') { for (let k = 0; k < 6; k++) ob.box(b.cx, b.cy - b.hh + (k + 0.5) * b.hh / 3, b.cz, b.hw, b.hh / 6, b.hl, k % 2 ? 0xf4f2ee : 0xe8262e) }
+        else stripe(b, i)
+        // 端の赤い灯（遠くからでも見える）
+        ol.box(b.cx + (b.hw > b.hl ? b.hw : 0), b.cy + b.hh, b.cz + (b.hl >= b.hw ? b.hl : 0), 0.35, 0.35, 0.35, 0xff2030)
+        ol.box(b.cx - (b.hw > b.hl ? b.hw : 0), b.cy + b.hh, b.cz - (b.hl >= b.hw ? b.hl : 0), 0.35, 0.35, 0.35, 0xff2030)
+      })
+      for (const sg of h.segs) rod(ob, sg[0], sg[1], sg[2], sg[3], sg[4], sg[5], sg[6], sg[6] > 0.3 ? 0xe8262e : 0xd8202a)
+    }
+    if (!ob.empty) { const m = new THREE.Mesh(ob.geometry(), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.45, metalness: 0.2, emissive: 0x401010, emissiveIntensity: 0.4 })); m.castShadow = !this.low; m.userData.keepColor = true; this.dyn.add(m) }
+    if (!ol.empty) { const m = new THREE.Mesh(ol.geometry(), new THREE.MeshBasicMaterial({ vertexColors: true })); m.userData.keepColor = true; this.dyn.add(m) }
     for (const h of H.haz) {
       if (h.kind === 'net') {
         // 網: 縦横の細い光の線（ローカル: x=通りの幅, y=高さ）と、うっすら赤い面
@@ -186,8 +209,13 @@ export class HeistView {
     // 輪: 金の輪と外側の光。次の輪だけ光の柱を立てる
     for (const C of H.cps) {
       const g = new THREE.Group(); g.position.set(C.x, C.y, C.z); g.rotation.y = Math.atan2(C.nx, C.nz)
-      g.add(new THREE.Mesh(new THREE.TorusGeometry(HZ.ringR, 0.28, 8, 48), this.ringMat))
-      g.add(new THREE.Mesh(new THREE.TorusGeometry(HZ.ringR, 0.9, 8, 48), this.ringGlowMat))
+      g.add(new THREE.Mesh(new THREE.TorusGeometry(C.r || HZ.ringR, 0.28, 8, 48), this.ringMat))
+      g.add(new THREE.Mesh(new THREE.TorusGeometry(C.r || HZ.ringR, 0.9, 8, 48), this.ringGlowMat))
+      // 真下の地面・川面に輪の影（どの高さでくぐるか、離す所の手がかり）
+      const W = this.world, gy = Math.max(W.groundAt(C.x, C.z, C.y).h, W.water ? W.water.y : -99) + 0.08
+      const sh = new THREE.Mesh(new THREE.RingGeometry(HZ.ringR - 0.6, HZ.ringR + 0.3, 40).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffb400, transparent: true, opacity: 0.55, depthWrite: false }))
+      sh.position.set(C.x, gy, C.z); sh.scale.set(1, 1, 0.35); sh.rotation.y = Math.atan2(C.nx, C.nz); sh.renderOrder = 2
+      this.dyn.add(sh); g.userData.shadow = sh
       this.dyn.add(g); this.rings.push({ C, g, pop: 0 })
     }
   }
@@ -263,7 +291,8 @@ export class HeistView {
     for (const R of this.rings) {
       const cur = H.cps[H.cp] === R.C
       if (R.C.passed) { R.pop += dt * 3; R.g.scale.setScalar(Math.max(0.001, 1 + R.pop * 0.6)); R.g.children[0].material = this.ringMat; R.g.visible = R.pop < 0.5 }
-      else { R.g.visible = true; const s = cur ? 1 + 0.04 * Math.sin(now * 5) : 0.85; R.g.scale.setScalar(s) }
+      if (R.g.userData.shadow) R.g.userData.shadow.visible = !R.C.passed
+      else { const k = H.cps.indexOf(R.C) - H.cp; R.g.visible = k <= 1; const s = cur ? 1.1 + 0.05 * Math.sin(now * 5) : 0.7; R.g.scale.setScalar(s) }   // 次の輪だけ大きく、その次は小さく、先は隠す
     }
     const T = H.cps[H.cp] || H.goal || H.cps[H.cps.length - 1]
     this.pillar.visible = !H.over

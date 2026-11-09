@@ -96,10 +96,10 @@ await t('遊び方を開いて閉じられる（4項目・操作が先頭）', a
 await t('はじめはコース1だけ開いていて、2〜4は押せない', async () => { const r = await p.evaluate(() => [...document.querySelectorAll('.plate')].map(b => b.disabled)); expect(r.join() === 'false,true,true,true', r); return r })
 await p.tap('.plate[data-c="1"]')
 await p.waitForFunction(() => heist.mode === 'play', null, { timeout: 15000 })
-await t('コース1を始めると輪が2つ・仕掛けができ、コーチが一言（同時に出る文字は1つ）・ゴーストは無い', async () => {
+await t('コース1を始めると輪が4つ・障害物ができ、コーチが一言（同時に出る文字は1つ）・ゴーストは無い', async () => {
   await p.waitForTimeout(600)
   const r = await p.evaluate(() => ({ course: heist.course, cps: heist.H.cps.length, goal: !!heist.H.goal, haz: heist.H.haz.length, kinds: [...new Set(heist.H.haz.map(h => h.kind))].sort().join(','), say: !document.getElementById('say').classList.contains('hidden'), text: document.getElementById('say').textContent, banner: !document.getElementById('banner').classList.contains('hidden'), ghost: heist.ghost }))
-  expect(r.course === 1 && r.cps === 2 && !r.goal && r.haz > 40 && r.kinds === 'ball,line,net,rotor,shutter' && r.say && /コーチ/.test(r.text) && !r.banner && !r.ghost, r); return r
+  expect(r.course === 1 && r.cps === 4 && !r.goal && r.haz > 10 && r.kinds === 'rotor,shape' && r.say && /コーチ/.test(r.text) && !r.banner && !r.ghost, r); return r
 })
 await t('右下の大ボタンを指で押すと、前の上の建物にワイヤーが掛かる', async () => {
   await calm(p); await p.evaluate(() => { heist.dbg.teleport(21, 0, 842, Math.PI / 2); heist.cam.hd = Math.PI / 2; heist.dbg.render(20) })
@@ -165,22 +165,43 @@ await t('壁蹴り: 空中で壁に当たった直後、大ボタンが「蹴る
   const r = await p.evaluate(() => { heist.dbg.step(1); return { vz: +heist.me.vz.toFixed(1), vy: +heist.me.vy.toFixed(1), kick: heist.log.some(e => e.t === 'wallkick'), tech: heist.log.some(e => e.t === 'tech' && e.kind === 'kick') } })
   expect(/kick/.test(s.cls) && s.label === '蹴る' && r.kick && r.tech && r.vz > 8 && r.vy > 6, { s, r }); return { s: s.label, r }
 })
-// 運河の高圧線（真ん中のたるんだ所）の上をすれすれで抜ける／当たる
-const LINE = (y) => `const z0 = 548; heist.dbg.teleport(132, ${y}, z0); const me = heist.me; for (let i = 0; i < 60; i++) { me.vx = 0; me.vz = -20; me.vy = 0; me.grounded = false; me.rope = null; me.y = ${y}; heist.dbg.step(1) } return { near: heist.log.filter(e => e.t === 'near').pop() || null, hit: heist.log.filter(e => e.t === 'hit').length, alarms: heist.H.misses }`
-await t('紙一重: 高圧線の上をすき間 1m 足らずで速く抜けると「紙一重」で懸賞金', async () => {
+// 通りの障害物（渡り廊下などの箱）の下をすれすれで抜ける／ぶつかる
+const UNDER = (gap) => `const H = heist.H, o = H.haz.find(h => h.kind === 'shape' && h.boxes.some(b => b.tag === 'deck' && b.cy - b.hh > 8)), b = o.boxes.find(b => b.tag === 'deck' && b.cy - b.hh > 8)
+  const long = b.hw > b.hl ? 'x' : 'z', y = b.cy - b.hh - 0.35 - 1.1 - 0.42 - (${gap}), me = heist.me   // 長い向きと直角にくぐる
+  if (long === 'x') heist.dbg.teleport(b.cx, y, b.cz - 12); else heist.dbg.teleport(b.cx - 12, y, b.cz)
+  for (let i = 0; i < 60; i++) { me.vx = long === 'x' ? 0 : 20; me.vz = long === 'x' ? 20 : 0; me.vy = 0; me.grounded = false; me.rope = null; me.y = y; heist.dbg.step(1) }
+  return { near: heist.log.filter(e => e.t === 'near').pop() || null, hit: heist.log.filter(e => e.t === 'hit').length, alarms: heist.H.misses, type: o.type }`
+await t('紙一重: 渡り廊下の下をすき間 1m 足らずで速く抜けると「紙一重」でスコア', async () => {
   await calm(p); const n0 = await p.evaluate(() => heist.log.filter(e => e.t === 'near').length)
-  const r = await p.evaluate(new Function(LINE(11.0)))
+  const r = await p.evaluate(new Function(UNDER(0.5)))
   const n1 = await p.evaluate(() => heist.log.filter(e => e.t === 'near').length)
-  expect(n1 >= n0 + 1 && r.alarms === 0 && r.near && r.near.gap < 1.5, r); return { gap: r.near.gap, tight: r.near.tight }
+  expect(n1 >= n0 + 1 && r.alarms === 0 && r.near && r.near.gap < 1.5, r); return { gap: r.near.gap, tight: r.near.tight, type: r.type }
 })
-await t('高圧線に触れるとミス（はじかれ、タイムに +3秒、計時板に「ミス 1」）', async () => {
+await t('障害物にぶつかるとミス（はじかれ、タイムに +3秒、計時板に「ミス 1」）', async () => {
   await calm(p)
-  const r = await p.evaluate(new Function(LINE(9.6)))
+  const r = await p.evaluate(new Function(UNDER(-1.2)))
   await p.evaluate(() => heist.dbg.render(2))
-  const hud = await p.evaluate(() => ({ miss: document.getElementById('miss2').textContent, penalty: heist.H.penalty, clock: document.getElementById('clock').textContent, t: heist.H.t }))
+  const hud = await p.evaluate(() => ({ miss: document.getElementById('miss2').textContent, penalty: heist.H.penalty, clock: document.getElementById('clock').textContent }))
   expect(r.alarms === 1 && r.hit >= 1 && hud.miss === 'ミス 1' && hud.penalty === 3 && parseFloat(hud.clock) >= 3, { r, hud }); return { r, hud }
 })
-await t('当たった直後は無敵（続けて警報が鳴らない）', async () => { const r = await p.evaluate(new Function(LINE(9.6).replace('const z0 = 548', 'heist.H.inv = 1; const z0 = 548'))); expect(r.alarms === 1, r) })
+await t('当たった直後は無敵（続けてミスにならない）', async () => { const r = await p.evaluate(new Function(UNDER(-1.2).replace('const H = heist.H,', 'heist.H.inv = 1; const H = heist.H,'))); expect(r.alarms === 1, r) })
+await t('障害物を指でタップしてもワイヤーは掛からない（「掛からない」の×）。障害物越しのビルにも掛からない', async () => {
+  const r = await p.evaluate(() => {
+    const H = heist.H, o = H.haz.find(h => h.kind === 'shape' && h.boxes.some(b => b.tag === 'deck')), b = o.boxes.find(b => b.tag === 'deck')
+    const long = b.hw > b.hl ? 'x' : 'z'
+    if (long === 'x') heist.dbg.teleport(b.cx, b.cy - 6, b.cz + 30, Math.PI); else heist.dbg.teleport(b.cx - 30, b.cy - 6, b.cz, Math.PI / 2)
+    heist.me.grounded = false; heist.cam.hd = long === 'x' ? Math.PI : Math.PI / 2; heist.cam.pitch = 0; heist.dbg.render(6)
+    return { xy: heist.pointXY(b.cx, b.cy, b.cz), n0: heist.log.filter(e => e.t === 'wire').length }
+  })
+  expect(r.xy.z < 1 && r.xy.x > 0 && r.xy.x < 390 && r.xy.y > 0 && r.xy.y < 844, r)
+  await p.touchscreen.tap(r.xy.x, r.xy.y)
+  const q = await p.evaluate(n0 => { heist.dbg.step(2); return { rope: !!heist.me.rope, wires: heist.log.filter(e => e.t === 'wire').length - n0, miss: heist.log.filter(e => e.t === 'wireMiss').pop() || null, label: document.querySelector('#miss small').textContent } }, r.n0)
+  expect(!q.rope && q.wires === 0 && q.miss && q.miss.noHook && q.label === '掛からない', q); return q
+})
+await t('大ボタンの自動の狙いは障害物を選ばない（障害物の箱の中の点が出ない）', async () => {
+  const r = await p.evaluate(() => { let n = 0, bad = 0; const nh = heist.world.noHook; for (const C of heist.H.cps) for (let k = 0; k < 24; k++) { heist.dbg.teleport(C.x - C.nx * 25, 14, C.z - C.nz * 25); heist.me.grounded = false; heist.cam.hd = k * Math.PI / 12; const a = heist.dbg.anchor(); n++; if (a && nh.some(b => a.x > b.x0 && a.x < b.x1 && a.y > b.y0 && a.y < b.y1 && a.z > b.z0 && a.z < b.z1)) bad++ } return { n, bad } })
+  expect(r.bad === 0, r); return r
+})
 await t('輪をくぐると「目印」で懸賞金・次の輪へ', async () => {
   await calm(p)
   const r = await p.evaluate(() => {
@@ -202,9 +223,9 @@ await t('輪の外を通っても数えない', async () => {
   })
   expect(r.cp === r.cp0, r); return r
 })
-await t('回転レーザー（輪1）: 羽根に重なるとミス', async () => {
+await t('回転レーザー（コース1の最後の輪）: 羽根に重なるとミス', async () => {
   const r = await p.evaluate(() => {
-    heist.start(4, 5); heist.dbg.pause(true); heist.H.noLight = true; heist.H.drones.length = 0
+    heist.start(1, 5); heist.dbg.pause(true); heist.H.noLight = true; heist.H.drones.length = 0
     const h = heist.H.haz.find(q => q.kind === 'rotor'), a = h.ph + h.w * (heist.H.t + 1 / 60), d = 3.5
     heist.dbg.teleport(h.cx + h.ux * Math.cos(a) * d, h.cy + Math.sin(a) * d - 0.9, h.cz + h.uz * Math.cos(a) * d)
     heist.me.grounded = false; heist.dbg.step(1)
@@ -212,27 +233,17 @@ await t('回転レーザー（輪1）: 羽根に重なるとミス', async () =>
   })
   expect(r.alarms === 1 && r.src === 'rotor', r); return r
 })
-await t('鉄球（輪2）: 球に重なるとミス', async () => {
+await t('モノレール（コース2）の軌道に重なるとミス、3回目でも続けられる', async () => {
   const r = await p.evaluate(() => {
-    heist.H.inv = 0; const h = heist.H.haz.find(q => q.kind === 'ball'), t1 = heist.H.t + 1 / 60, th = h.A * Math.sin(Math.PI * 2 * t1 / h.T + h.ph)
-    heist.dbg.teleport(h.px + h.sx * Math.sin(th) * h.Lc, h.py - Math.cos(th) * h.Lc - 0.9, h.pz + h.sz * Math.sin(th) * h.Lc)
-    heist.me.grounded = false; heist.dbg.step(1)
-    return { alarms: heist.H.misses, src: (heist.log.filter(e => e.t === 'hit').pop() || {}).src }
+    heist.start(2, 5); heist.dbg.pause(true); heist.H.drones.length = 0
+    const o = heist.H.haz.find(h => h.type === 'monorail'), b = o.boxes[0]
+    const out = []
+    for (let k = 0; k < 3; k++) { heist.H.inv = 0; heist.dbg.teleport(b.cx - 60 + k * 40, b.cy - 0.9, b.cz); heist.me.grounded = false; heist.dbg.step(1); out.push(heist.H.misses) }
+    return { misses: out, src: (heist.log.filter(e => e.t === 'hit').pop() || {}).src, end: heist.H.end }
   })
-  expect(r.alarms === 2 && r.src === 'ball', r); return r
+  expect(r.misses.join() === '1,2,3' && r.src === 'shape' && r.end == null, r); return r
 })
-await t('網（通りを走査するレーザー）: 上を越えれば当たらず、網に重なるとミス（3回目でも続けられる）', async () => {
-  const r = await p.evaluate(() => {
-    heist.H.inv = 0; const h = heist.H.haz.find(q => q.kind === 'net'), span = h.p1 - h.p0
-    const posAt = t1 => { const u = ((h.ph + h.v * t1) % (span * 2) + span * 2) % (span * 2); return u < span ? h.p0 + u : h.p1 - (u - span) }
-    const put = (y) => { const pp = posAt(heist.H.t + 1 / 60); if (h.axis === 'x') heist.dbg.teleport(pp, y, h.c); else heist.dbg.teleport(h.c, y, pp); heist.me.grounded = false }
-    put(h.top + 3); heist.dbg.step(1); const over = heist.H.misses
-    heist.H.inv = 0; put(6); heist.dbg.step(1)
-    return { over, inside: heist.H.misses, src: (heist.log.filter(e => e.t === 'hit').pop() || {}).src, end: heist.H.end }
-  })
-  expect(r.over === 2 && r.inside === 3 && r.src === 'net' && r.end == null, r); return r
-})
-await t('コース1の2つ目の輪をくぐるとゴール → 記録紙・自己ベストを保存・コース2が開く', async () => {
+await t('コース1の最後の輪をくぐるとゴール → 記録紙・自己ベストを保存・コース2が開く', async () => {
   const r = await p.evaluate(() => {
     heist.start(1, 41); heist.dbg.pause(true); heist.H.drones.length = 0; heist.H.inv = 1e9
     for (const C of heist.H.cps) { heist.dbg.teleport(C.x - C.nx * 8, C.y - 1.1, C.z - C.nz * 8); const me = heist.me; for (let i = 0; i < 40 && !heist.H.over; i++) { me.vx = C.nx * 18; me.vz = C.nz * 18; me.vy = 0; me.y = C.y - 1.1; me.grounded = false; heist.dbg.step(1) } }
@@ -277,25 +288,12 @@ await t('ドローン: 真後ろを追ってきたドローンはビルの角で
   })
   expect(r.crash && r.mine && r.tech, r); return r
 })
-await t('コース3: 輪のあとで気球のかごに入るとゴール', async () => {
-  const r = await p.evaluate(() => {
-    heist.start(3, 23); heist.dbg.pause(true); heist.H.drones.length = 0
-    for (const C of heist.H.cps) C.passed = true; heist.H.cp = heist.H.cps.length
-    const G = heist.H.goal; heist.dbg.teleport(G.x - 8, G.y, G.z); const me = heist.me
-    for (let i = 0; i < 40 && !heist.H.over; i++) { me.vx = 14; me.vz = 0; me.vy = 0; me.y = G.y - 0.5; me.grounded = false; heist.dbg.step(1) }
-    return { end: heist.H.end, goal: heist.log.some(e => e.t === 'goal'), score: heist.H.stats.score }
-  })
-  expect(r.end === 'clear' && r.goal && r.score >= 100, r)
-  await p.evaluate(() => heist.dbg.pause(false)); await p.waitForFunction(() => heist.mode === 'result', null, { timeout: 8000 })
-  await p.screenshot({ path: ROOT + '/shots/v-goal.png' })
-  return r
-})
 await t('何もしない通し: 時間切れでゴールできず、メダル0・スコア0（いちばん悪い）', async () => {
   const r = await p.evaluate(() => { heist.start(1, 31); heist.dbg.pause(true); heist.dbg.stepUntil('heist.H.over', 60 * 130); return { end: heist.H.end, t: Math.round(heist.H.t), score: heist.H.stats.score } })
   expect(r.end === 'timeout' && r.score === 0, r); return r
 })
-await t('コース4は5分で時間切れ', async () => {
-  const r = await p.evaluate(() => { heist.start(4, 32); heist.dbg.pause(true); heist.dbg.safe(); heist.H.t = 300 - 0.02; heist.dbg.step(3); return { end: heist.H.end } })
+await t('コース4は4分で時間切れ', async () => {
+  const r = await p.evaluate(() => { heist.start(4, 32); heist.dbg.pause(true); heist.dbg.safe(); heist.H.t = heist.H.limit - 0.02; heist.dbg.step(3); return { end: heist.H.end, limit: heist.H.limit } })
   expect(r.end === 'timeout', r); return r
 })
 await t('一時停止 → やり直す・やめるとコースの札に戻る', async () => {
@@ -310,7 +308,7 @@ await t('英語に切り替えられる（コースの札と記録紙）', async
   const s = await p.textContent('.pick'), n = await p.textContent('.plate[data-c="1"] .pt b')
   await p.evaluate(() => { heist.start(1, 34); heist.dbg.pause(true); heist.dbg.stepUntil('heist.H.over', 60 * 130); heist.dbg.step(60); heist.showResult() })
   await p.screenshot({ path: ROOT + '/shots/v-result-en.png' })
-  await p.evaluate(() => heist.setLang('ja')); expect(s === 'Choose a course' && n === 'Plaza to the site', { s, n }); return s
+  await p.evaluate(() => heist.setLang('ja')); expect(s === 'Choose a course' && n === 'Down the avenue', { s, n }); return s
 })
 await t('Chromium: 実際には無音（音を鳴らした後）', async () => { const r = await p.evaluate(() => window.__muteOk()); expect(r, r) })
 await t('Chromium: エラーなし（通しの後）', async () => { expect(p.errs.length === 0, p.errs.join('|')) })

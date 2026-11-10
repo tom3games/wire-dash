@@ -421,7 +421,23 @@ function hit(H, r, src, h) {
   const l = Math.hypot(ax, az) || 1
   if (r.rope) { r.rope = null; r.events.push({ t: 'unwire', auto: true, cut: true }) }
   r.climbing = null
-  r.vx = r.vx * 0.25 + ax / l * HZ.knock; r.vz = r.vz * 0.25 + az / l * HZ.knock; r.vy = Math.max(r.vy * 0.3, HZ.knockUp)
+  const C = H.cps[H.cp]
+  const sn = C ? (r.x - C.x) * C.nx + (r.z - C.z) * C.nz : 99
+  const vn = C ? r.vx * C.nx + r.vz * C.nz : 0
+  let aim = 99   // 今の向きのまま進んだら輪の面のどこを通るか（輪の中心からの距離）
+  if (C && Math.abs(sn) < 8) {
+    const tt = Math.abs(sn) < 1.5 ? 0 : (vn * sn < 0 ? -sn / vn : -1)
+    if (tt >= 0) aim = Math.hypot((r.x + r.vx * tt - C.x) * C.nz - (r.z + r.vz * tt - C.z) * C.nx, r.y + r.vy * tt + 1.1 - C.y)
+  }
+  if (aim < (C ? C.r || HZ.ringR : 0) + 2.5) {
+    // 輪に向かっている途中で当たった: 輪に向かう速さは消さず、押し戻さない（押し戻すと「くぐったのに数えない」になる）
+    const dir = Math.abs(vn) > 0.5 ? Math.sign(vn) : (sn >= 0 ? 1 : -1)
+    const keep = dir * Math.max(Math.abs(vn) * 0.6, 6)
+    const vl = (r.vx * -C.nz + r.vz * C.nx) * 0.25
+    r.vx = C.nx * keep - C.nz * vl; r.vz = C.nz * keep + C.nx * vl; r.vy = r.vy * 0.3
+  } else {
+    r.vx = r.vx * 0.25 + ax / l * HZ.knock; r.vz = r.vz * 0.25 + az / l * HZ.knock; r.vy = Math.max(r.vy * 0.3, HZ.knockUp)
+  }
   r.grounded = false; r.stun = Math.max(r.stun || 0, HZ.stun)
   ev(H, { t: 'hit', src, n: H.misses, x: r.x, y: r.y + 1, z: r.z })
 }

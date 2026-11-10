@@ -20,6 +20,11 @@ async function t(name, fn) {
   if (process.env.LIVE) console.log(results[results.length - 1])
 }
 const expect = (c, msg) => { if (!c) throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg)) }
+// 輪の判定: 全コース・全部の輪を、速さ6段階×向き×輪の真ん中と縁で通す。仕掛けに当たっても、輪へ向かっていたなら数える
+for (const mode of [[], ['hits']]) await t(`輪をくぐったら必ず数える ${mode[0] || '当たりなし'}`, () => {
+  const out = execFileSync(process.execPath, ['tools/rings.mjs', ...mode], { cwd: ROOT, encoding: 'utf8' })
+  return out.split('\n')[0]
+})
 async function open(browser, opts = {}) {
   const ctx = await browser.newContext({ locale: 'ja-JP', viewport: { width: 390, height: 844 }, ...opts })
   await muteContext(ctx)

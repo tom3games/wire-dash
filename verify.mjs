@@ -10,7 +10,8 @@ execFileSync(process.execPath, ['tools/build.mjs'], { cwd: ROOT, stdio: 'inherit
 mkdirSync(ROOT + '/shots', { recursive: true })
 const PORT = Number(process.env.VPORT || 6452)
 const server = spawn(process.execPath, ['server.mjs'], { cwd: ROOT, env: { ...process.env, PORT: String(PORT) } })
-await new Promise(r => setTimeout(r, 500))
+process.on('exit', () => server.kill())   // 途中で落ちても確認用サーバーを残さない（次の回がポートを握られる）
+for (let i = 0; i < 100; i++) { try { await fetch(`http://localhost:${PORT}/`); break } catch (e) { await new Promise(r => setTimeout(r, 100)) } }
 const URL0 = `http://localhost:${PORT}/`
 let pass = 0, fail = 0
 const results = []
@@ -34,7 +35,7 @@ async function open(browser, opts = {}) {
   p.on('pageerror', e => p.errs.push('pageerror ' + e.message))
   p.on('console', m => { if (m.type() === 'error' && !/ERR_INTERNET_DISCONNECTED/.test(m.text())) p.errs.push('console ' + m.text()) })
   p.on('requestfailed', r => { if (!/fonts\.(googleapis|gstatic)|googletagmanager/.test(r.url())) p.errs.push('reqfail ' + r.url()) })
-  await p.goto(URL0); await p.waitForFunction(() => window.__wdReady, null, { timeout: 40000 })
+  await p.goto(URL0, { timeout: 120000 }); await p.waitForFunction(() => window.__wdReady, null, { timeout: 90000 })
   return p
 }
 const overflow = p => p.evaluate(() => {
@@ -256,7 +257,9 @@ await t('コース1の最後の輪をくぐるとゴール → 記録紙・自�
     return { end: heist.H.end, t: +heist.H.t.toFixed(2) }
   })
   expect(r.end === 'clear', r)
-  await p.evaluate(() => heist.dbg.pause(false)); await p.waitForFunction(() => heist.mode === 'result', null, { timeout: 8000 })
+  // ゴール後 2.2 秒で記録紙。実時間で待つと 3D の描画が遅い時に8秒を超えるので、描画のコマ（1/30秒）で進める
+  const fr = await p.evaluate(() => { let i = 0; for (; i < 300 && heist.mode !== 'result'; i++) heist.dbg.render(1); heist.dbg.pause(false); return { i, mode: heist.mode } })
+  expect(fr.mode === 'result', fr)
   const q = await p.evaluate(() => ({ best: heist.bestOf(1), next: !document.getElementById('btnNext').classList.contains('hidden'), w: document.getElementById('slip').width, s: window.__lastSummary }))
   await p.screenshot({ path: ROOT + '/shots/v-clear.png' })
   expect(q.best && q.best.time > 0 && Array.isArray(q.best.path) && q.best.path.length >= 6 && q.next && q.w === 1080 && q.s.newBest && q.s.medal.time, q); return { time: q.best.time, medal: q.s.medal }
